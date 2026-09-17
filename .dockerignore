@@ -1,0 +1,19 @@
+# entorno local / control de versiones — no debe viajar dentro de la imagen
+venv/
+__pycache__/
+*.pyc
+.env
+.git/
+.gitignore
+
+# tests: no forman parte del artefacto que se ejecuta en el contenedor
+tests/
+
+# artefactos comunes de Python que podrian aparecer mas adelante
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# artefactos del propio build de Docker
+Dockerfile
+.dockerignore
