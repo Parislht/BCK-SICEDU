@@ -18,3 +18,4 @@ tests/
 # artefactos del propio build de Docker
 Dockerfile
 .dockerignore
+.sonar/
