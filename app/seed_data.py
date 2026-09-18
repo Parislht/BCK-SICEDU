@@ -18,6 +18,9 @@ PROFESOR_PASSWORD = "ProfesorTest123"
 JEFA_CORREO = "jefa.prueba@sicedu.test"
 JEFA_PASSWORD = "JefaTest123"
 
+DIRECTIVO_CORREO = "directivo.prueba@sicedu.test"
+DIRECTIVO_PASSWORD = "DirectivoTest123"
+
 
 def get_or_create_rol(session: Session, nombre: str) -> Rol:
     rol = session.exec(select(Rol).where(Rol.nombre == nombre)).first()
@@ -83,11 +86,27 @@ def seed() -> None:
             )
             session.add(usuario_jefa)
 
+        usuario_directivo = session.exec(
+            select(Usuario).where(Usuario.correo == DIRECTIVO_CORREO)
+        ).first()
+        if usuario_directivo is None:
+            usuario_directivo = Usuario(
+                id_rol=roles["Directivos"].id_rol,
+                correo=DIRECTIVO_CORREO,
+                password_hash=hash_password(DIRECTIVO_PASSWORD),
+                id_docente=None,
+                nombres="Directivo",
+                apellidos="de Prueba",
+                activo=True,
+            )
+            session.add(usuario_directivo)
+
         session.commit()
 
         print("Seed completado.")
         print(f"Profesor         -> correo: {PROFESOR_CORREO}  password: {PROFESOR_PASSWORD}")
         print(f"Jefa_Profesores  -> correo: {JEFA_CORREO}  password: {JEFA_PASSWORD}")
+        print(f"Directivos       -> correo: {DIRECTIVO_CORREO}  password: {DIRECTIVO_PASSWORD}")
 
 
 if __name__ == "__main__":
