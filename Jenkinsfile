@@ -1,15 +1,13 @@
 // Pipeline de BCK-HUASCARAN (Jenkins multibranch del curso).
 //
-//   development → despliega el entorno dev
-//   qa          → SonarQube, despliega qa
-//   uat         → despliega uat (presentaciones semanales)
+//   development → despliegue
+//   qa, uat     → pruebas (pytest + cobertura), SonarQube, Quality Gate y despliegue
 //   main        → todavía no despliega
 //
 // El .env de cada entorno está en Jenkins como credencial "Secret file":
 // HUASCARAN_SECRETS_BACKEND_DEV, _QA y _UAT. Nunca se imprime en el log.
-//
-// Todavía no hay tests: cuando existan (pytest), van en un stage antes de
-// SonarQube, igual que en el Jenkinsfile del frontend.
+// El contenedor no publica puertos: el proxy del servidor lo alcanza por la red
+// proxy_net con el nombre <entorno>-bck-huascaran (ver docker-compose.yml).
 
 pipeline {
     agent any
@@ -31,30 +29,57 @@ pipeline {
             }
         }
 
-        stage('SonarQube') {
+        stage('Pruebas') {
             when {
-                branch 'qa'
+                anyOf {
+                    branch 'qa'
+                    branch 'uat'
+                }
             }
             agent {
                 docker {
-                    image 'maven:3.9.8-eclipse-temurin-21-alpine'
+                    image 'python:3.11-slim'
                     reuseNode true
                 }
             }
             steps {
-                // Si SonarQube aún no está configurado para el proyecto, el build
-                // queda UNSTABLE pero el despliegue de qa sigue.
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    script {
-                        def scannerHome = tool 'SonarScanner'
-                        withSonarQubeEnv('SonarQube-Server') {
-                            sh """
-                                export SONAR_USER_HOME="\${WORKSPACE}/.sonar"
-                                mkdir -p "\${SONAR_USER_HOME}"
-                                ${scannerHome}/bin/sonar-scanner
-                            """
-                        }
-                    }
+                // Las pruebas usan SQLite en memoria: no necesitan base de datos.
+                sh '''
+                    python -m venv venv
+                    . venv/bin/activate
+                    pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+                    pytest tests/ --cov=app --cov-report=xml:coverage.xml
+                '''
+            }
+        }
+
+        stage('SonarQube') {
+            when {
+                anyOf {
+                    branch 'qa'
+                    branch 'uat'
+                }
+            }
+            environment {
+                scannerHome = tool 'SonarScanner'
+            }
+            steps {
+                withSonarQubeEnv('SonarQube-Server') {
+                    sh "${scannerHome}/bin/sonar-scanner"
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when {
+                anyOf {
+                    branch 'qa'
+                    branch 'uat'
+                }
+            }
+            steps {
+                timeout(time: 15, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
@@ -103,9 +128,11 @@ pipeline {
                             break
                         fi
                         CORRIENDO=$(docker inspect -f '{{.State.Running}}' "$CONTENEDOR" 2>/dev/null)
-                        echo "  intento $i/24 -> Running=$CORRIENDO"
-                        # Si el contenedor ya se detuvo (migración fallida, .env incompleto), no tiene sentido esperar.
-                        if [ "$CORRIENDO" != "true" ]; then break; fi
+                        RESTARTS=$(docker inspect -f '{{.RestartCount}}' "$CONTENEDOR" 2>/dev/null)
+                        echo "  intento $i/24 -> Running=$CORRIENDO Restarts=$RESTARTS"
+                        # Si el contenedor se detuvo o entra en bucle de reinicios
+                        # (migración fallida, .env incompleto), no tiene sentido esperar.
+                        if [ "$CORRIENDO" != "true" ] || [ "${RESTARTS:-0}" -gt 0 ]; then break; fi
                         sleep 5
                     done
 
@@ -118,20 +145,6 @@ pipeline {
                     fi
                     echo "OK: la API responde."
                 '''
-            }
-        }
-
-        stage('Quality Gate') {
-            when {
-                branch 'qa'
-            }
-            steps {
-                // Va después del despliegue para no retrasarlo esperando a SonarQube.
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    timeout(time: 5, unit: 'MINUTES') {
-                        waitForQualityGate abortPipeline: false
-                    }
-                }
             }
         }
     }

@@ -19,3 +19,7 @@ tests/
 Dockerfile
 .dockerignore
 .sonar/
+.coverage
+coverage.xml
+requirements-dev.txt
+pytest.ini

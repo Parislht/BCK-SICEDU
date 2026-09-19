@@ -5,3 +5,6 @@ __pycache__/
 .env.*
 !.env.example
 .sonar/
+.coverage
+coverage.xml
+.pytest_cache/
